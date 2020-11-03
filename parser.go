@@ -36,23 +36,24 @@ const HEADER = "header"
 const BODY = "body"
 
 type node struct {
-	root       bool
-	state      string
 	ChildNodes []*node
 	Header     []string
 	// https://golang.org/pkg/net/textproto/#MIMEHeader
 	ParsedHeader   map[string][]string
 	Body           []string
 	Multipart      string
-	parentBoundary string
 	Boundary       string
-	parentNode     *node
 	LineCount      int
 	Size           int
+	root           bool
+	state          string
+	parentNode     *node
+	parentBoundary string
 }
 
 type MimeTree struct {
 	rawScanner   *bufio.Scanner
+	rawReader    *bufio.Reader
 	rawBody      string
 	MimetreeRoot *node
 	nodeCount    int16
@@ -78,6 +79,7 @@ func NewMimeTree(raw io.Reader) *MimeTree {
 
 	mimeTree := MimeTree{
 		rawScanner:   bufio.NewScanner(raw),
+		rawReader:    bufio.NewReader(raw),
 		rawBody:      "",
 		MimetreeRoot: &rootNode,
 		nodeCount:    0,
@@ -111,13 +113,38 @@ func (mt *MimeTree) createNode(parent *node) *node {
 	return &newNode
 }
 
-func (mt *MimeTree) Parse() error {
+type ParserCallback func(interface{}) error
+
+func readNextLine(r *bufio.Reader, l []byte) ([]byte, error) {
+	for {
+		lineb, more, err := r.ReadLine()
+
+		if err != nil {
+			return l, err
+		}
+
+		l = append(l, lineb...)
+
+		if !more {
+			break
+		}
+	}
+
+	return l, nil
+
+}
+
+func (mt *MimeTree) Parse(pc ParserCallback) error {
 	line := ""
-	// prevBr := ""
+	var readerr error = nil
+	for readerr != io.EOF {
+		nextLine, err := readNextLine(mt.rawReader, nil)
 
-	for mt.rawScanner.Scan() {
-
-		line = mt.rawScanner.Text()
+		readerr = err
+		if err != nil && err != io.EOF {
+			return err
+		}
+		line = string(nextLine)
 
 		switch mt.currentNode.state {
 		case HEADER:
