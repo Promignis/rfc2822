@@ -2,8 +2,10 @@ package rfc2822
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"mime"
 	"regexp"
 	"strings"
@@ -54,7 +56,6 @@ type node struct {
 type MimeTree struct {
 	rawScanner   *bufio.Scanner
 	rawReader    *bufio.Reader
-	rawBody      string
 	MimetreeRoot *node
 	nodeCount    int16
 	currentNode  *node
@@ -80,7 +81,6 @@ func NewMimeTree(raw io.Reader) *MimeTree {
 	mimeTree := MimeTree{
 		rawScanner:   bufio.NewScanner(raw),
 		rawReader:    bufio.NewReader(raw),
-		rawBody:      "",
 		MimetreeRoot: &rootNode,
 		nodeCount:    0,
 		currentNode:  nil,
@@ -134,24 +134,115 @@ func readNextLine(r *bufio.Reader, l []byte) ([]byte, error) {
 
 }
 
+type BodyReader struct {
+	pboundary string
+	bufReader *bufio.Reader
+	n         int
+	err       error
+	readErr   error
+}
+
+func newBodyReader(boundary string, r io.Reader) *BodyReader {
+	return &BodyReader{
+		pboundary: boundary,
+		bufReader: bufio.NewReaderSize(r, 256),
+	}
+}
+
+func (bodR *BodyReader) Read(d []byte) (int, error) {
+	boundry := bodR.pboundary
+	dashB := []byte("--" + boundry)
+	br := bodR.bufReader
+
+	// Read into buffer until we identify some data to return,
+	// or we find a reason to stop (boundary or read error).
+	for bodR.n == 0 && bodR.err == nil {
+		peek, _ := br.Peek(br.Buffered())
+
+		bodR.n, bodR.err = scanUntilBoundary(peek, dashB, bodR.readErr)
+
+		if bodR.n == 0 && bodR.err == nil {
+			_, bodR.readErr = br.Peek(len(peek) + 1)
+
+			if bodR.readErr == io.EOF {
+				bodR.readErr = io.ErrUnexpectedEOF
+			}
+		}
+	}
+
+	if bodR.n == 0 {
+		return 0, bodR.err
+	}
+	n := len(d)
+
+	if n > bodR.n {
+		n = bodR.n
+	}
+	n, _ = br.Read(d[:n])
+	bodR.n -= n
+	if bodR.n == 0 {
+		return n, bodR.err
+	}
+
+	return n, nil
+}
+
+func scanUntilBoundary(buf, dashBoundary []byte, readErr error) (int, error) {
+	// Search for "--boundary".
+	if i := bytes.Index(buf, dashBoundary); i >= 0 {
+
+		switch matchAfterPrefix(buf[i:], dashBoundary, readErr) {
+		case -1:
+			return i + len(dashBoundary), nil
+		case 0:
+			return i, nil
+		case +1:
+			return i, io.EOF
+		}
+	}
+	if bytes.HasPrefix(dashBoundary, buf) {
+		return 0, readErr
+	}
+
+	i := bytes.LastIndexByte(buf, dashBoundary[0])
+	if i >= 0 && bytes.HasPrefix(dashBoundary, buf[i:]) {
+		return i, nil
+	}
+	return len(buf), readErr
+}
+
+func matchAfterPrefix(buf, prefix []byte, readErr error) int {
+	if len(buf) == len(prefix) {
+		if readErr != nil {
+			return +1
+		}
+		return 0
+	}
+	c := buf[len(prefix)]
+	if c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '-' {
+		return +1
+	}
+	return -1
+}
+
 func (mt *MimeTree) Parse(pc ParserCallback) error {
 	line := ""
 	var readerr error = nil
 	for readerr != io.EOF {
+
 		nextLine, err := readNextLine(mt.rawReader, nil)
 
 		readerr = err
-		if err != nil && err != io.EOF {
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
 			return err
 		}
 		line = string(nextLine)
 
 		switch mt.currentNode.state {
 		case HEADER:
-			if mt.rawBody != "" {
-				mt.rawBody += line
-			}
-
 			// This means end of a header section
 			// and start of body
 			if line == "" {
@@ -165,22 +256,36 @@ func (mt *MimeTree) Parse(pc ParserCallback) error {
 			break
 
 		case BODY:
-			mt.rawBody += line
 
 			if (mt.currentNode.parentBoundary != "") && (line == "--"+mt.currentNode.parentBoundary || line == "--"+mt.currentNode.parentBoundary+"--") {
-				// start of a new section has a boundry like "--000000000000ffd62a05b2a4b0bd"
 				if line == "--"+mt.currentNode.parentBoundary {
 					mt.currentNode = mt.createNode(mt.currentNode.parentNode)
 				} else {
-					// ending of a section has a boundry like "--000000000000ffd62a05b2a4b0bd--"
-					// so the current node now is the parent node
 					mt.currentNode = mt.currentNode.parentNode
 				}
-
 			} else if (mt.currentNode.Boundary != "") && (line == "--"+mt.currentNode.Boundary) {
 				mt.currentNode = mt.createNode(mt.currentNode)
 			} else {
-				mt.currentNode.Body = append(mt.currentNode.Body, line)
+				if mt.currentNode.parentBoundary != "" {
+					bodReader := newBodyReader(mt.currentNode.parentBoundary, mt.rawReader)
+					buf, err := ioutil.ReadAll(bodReader)
+					if err != nil {
+						return err
+					}
+					buf = append([]byte(line), buf...)
+
+					mt.currentNode.Body = append(mt.currentNode.Body, string(buf))
+
+				} else if mt.currentNode.parentBoundary == "" {
+
+					buf, err := ioutil.ReadAll(mt.rawReader)
+					if err != nil {
+						return err
+					}
+					buf = append([]byte(line), buf...)
+
+					mt.currentNode.Body = append(mt.currentNode.Body, string(buf))
+				}
 			}
 
 			break
@@ -335,5 +440,4 @@ func (mt *MimeTree) Finalize() {
 	walker(mt.MimetreeRoot)
 
 	mt.currentNode = nil
-	mt.rawBody = ""
 }
