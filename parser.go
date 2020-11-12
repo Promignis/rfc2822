@@ -5,8 +5,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
-	"mime"
 	"regexp"
 	"strings"
 )
@@ -37,38 +35,53 @@ const MAX_MIME_NODES = 99
 const HEADER = "header"
 const BODY = "body"
 
-type node struct {
-	ChildNodes []*node
-	Header     []string
+type Node struct {
+	ChildNodes []*Node
+	Headers    []string
 	// https://golang.org/pkg/net/textproto/#MIMEHeader
-	ParsedHeader   map[string][]string
-	Body           []string
-	Multipart      string
-	Boundary       string
-	LineCount      int
-	Size           int
-	root           bool
-	state          string
-	parentNode     *node
-	parentBoundary string
+	ParsedHeader       map[string][]string
+	BadHeaders         map[string][]string
+	Body               []string
+	Multipart          string
+	ContentType        ContentType
+	ContentDisposition ContentDisposition
+	Boundary           string
+	LineCount          int
+	Size               int
+	root               bool
+	state              string
+	parentNode         *Node
+	parentBoundary     string
 }
 
 type MimeTree struct {
 	rawScanner   *bufio.Scanner
 	rawReader    *bufio.Reader
-	MimetreeRoot *node
+	MimetreeRoot *Node
 	nodeCount    int16
-	currentNode  *node
+	currentNode  *Node
+}
+
+type ContentType struct {
+	Type    string
+	SubType string
+	Params  map[string]string
+}
+
+type ContentDisposition struct {
+	MediaType string
+	Params    map[string]string
 }
 
 func NewMimeTree(raw io.Reader) *MimeTree {
 
-	rootNode := node{
+	rootNode := Node{
 		root:           true,
-		ChildNodes:     []*node{},
+		ChildNodes:     []*Node{},
 		state:          "",
-		Header:         []string{},
+		Headers:        []string{},
 		ParsedHeader:   map[string][]string{},
+		BadHeaders:     map[string][]string{},
 		Body:           []string{},
 		Multipart:      "",
 		parentBoundary: "",
@@ -91,14 +104,15 @@ func NewMimeTree(raw io.Reader) *MimeTree {
 	return &mimeTree
 }
 
-func (mt *MimeTree) createNode(parent *node) *node {
+func (mt *MimeTree) createNode(parent *Node) *Node {
 	mt.nodeCount++
 
-	newNode := node{
+	newNode := Node{
 		state:          HEADER,
-		ChildNodes:     []*node{},
-		Header:         []string{},
+		ChildNodes:     []*Node{},
+		Headers:        []string{},
 		ParsedHeader:   map[string][]string{},
+		BadHeaders:     map[string][]string{},
 		Body:           []string{},
 		Multipart:      "",
 		parentBoundary: parent.Boundary,
@@ -113,7 +127,7 @@ func (mt *MimeTree) createNode(parent *node) *node {
 	return &newNode
 }
 
-type ParserCallback func(interface{}) error
+type ParserCallback func(readBody []byte, bodyReader io.Reader, mimeNode *Node) error
 
 func readNextLine(r *bufio.Reader, l []byte) ([]byte, error) {
 	for {
@@ -246,11 +260,18 @@ func (mt *MimeTree) Parse(pc ParserCallback) error {
 			// This means end of a header section
 			// and start of body
 			if line == "" {
-				mt.processHeader()
-				mt.processContentType()
+				err := mt.processHeader()
+				if err != nil {
+					return err
+				}
+				err = mt.processContentType()
+				if err != nil {
+					return err
+				}
+
 				mt.currentNode.state = BODY
 			} else {
-				mt.currentNode.Header = append(mt.currentNode.Header, line)
+				mt.currentNode.Headers = append(mt.currentNode.Headers, line)
 			}
 
 			break
@@ -268,23 +289,19 @@ func (mt *MimeTree) Parse(pc ParserCallback) error {
 			} else {
 				if mt.currentNode.parentBoundary != "" {
 					bodReader := newBodyReader(mt.currentNode.parentBoundary, mt.rawReader)
-					buf, err := ioutil.ReadAll(bodReader)
+
+					err := pc(nextLine, bodReader, mt.currentNode)
+
 					if err != nil {
 						return err
 					}
-					buf = append([]byte(line), buf...)
-
-					mt.currentNode.Body = append(mt.currentNode.Body, string(buf))
-
 				} else if mt.currentNode.parentBoundary == "" {
 
-					buf, err := ioutil.ReadAll(mt.rawReader)
+					err := pc(nextLine, mt.rawReader, mt.currentNode)
+
 					if err != nil {
 						return err
 					}
-					buf = append([]byte(line), buf...)
-
-					mt.currentNode.Body = append(mt.currentNode.Body, string(buf))
 				}
 			}
 
@@ -304,14 +321,14 @@ func (mt *MimeTree) Parse(pc ParserCallback) error {
 	return nil
 }
 
-func (mt *MimeTree) processHeader() {
+func (mt *MimeTree) processHeader() error {
 	var key, value string
 
-	headers := mt.currentNode.Header
+	headers := mt.currentNode.Headers
 
 	for i := (len(headers) - 1); i >= 0; i-- {
 		if i > 0 && whitespace.Match([]byte(headers[i])) {
-			headers[i-1] = headers[i-1] + "\r\r" + headers[i]
+			headers[i-1] = headers[i-1] + "\r\n" + headers[i]
 			headers = headers[:i]
 		} else {
 			spl := strings.Split(headers[i], ":")
@@ -323,15 +340,16 @@ func (mt *MimeTree) processHeader() {
 				value = ""
 			}
 
-			// Do not touch headers that have strange looking keys, keep these
-			// only in the unparsed array
-			if notNormalHeaderKey.Match([]byte(key)) || len(key) > 100 {
-				continue
-			}
+			// TODO: Check if values are utf-7
+			value = string(linebreak.ReplaceAll([]byte(value), []byte("")))
 
-			// TODO: Check if values are utf-7, what happens then
-			value = string(linebreak.ReplaceAll([]byte(value), []byte(" ")))
-			mt.currentNode.ParsedHeader[key] = append(mt.currentNode.ParsedHeader[key], value)
+			// Track headers that have strange looking keys, keep these
+			// in the seperate section
+			if notNormalHeaderKey.Match([]byte(key)) || len(key) > 100 {
+				mt.currentNode.BadHeaders[key] = append(mt.currentNode.ParsedHeader[key], value)
+			} else {
+				mt.currentNode.ParsedHeader[key] = append(mt.currentNode.ParsedHeader[key], value)
+			}
 		}
 	}
 
@@ -348,6 +366,14 @@ func (mt *MimeTree) processHeader() {
 		}
 	}
 
+	if contDisp, ok := mt.currentNode.ParsedHeader["content-disposition"]; ok {
+		parsedContentDisp, err := ParseContentDisposition(contDisp[0])
+		if err != nil {
+			return fmt.Errorf("Could not parse content disposition %v: %v", contDisp[0], err)
+		}
+		mt.currentNode.ContentDisposition = parsedContentDisp
+	}
+
 	/*
 		TODO:
 		Parse address, ie values for headers 'from', 'sender', 'reply-to', 'to', 'cc', 'bcc'
@@ -356,6 +382,8 @@ func (mt *MimeTree) processHeader() {
 		 [{name: 'Name', address: 'address@domain'}]
 
 	*/
+
+	return nil
 }
 
 func (mt *MimeTree) processContentType() error {
@@ -364,30 +392,22 @@ func (mt *MimeTree) processContentType() error {
 		return nil
 	}
 
-	// parse content type
+	parsedContentType, err := ParseContentType(mt.currentNode.ParsedHeader["content-type"][0])
+	if err != nil {
+		return fmt.Errorf("Could not parse content type %v: %v", mt.currentNode.ParsedHeader["content-type"][0], err)
+	}
+	mt.currentNode.ContentType = parsedContentType
+
 	/*
 		Certain headers like content-type has ; seperated params
 		eg: Content-Type: multipart/mixed; boundary="000000000000ffd62a05b2a4b0bd"
 		this function seperates out the params in a typed structure
 	*/
-	headerVal := mt.currentNode.ParsedHeader["content-type"][0]
 
-	mediatype, params, err := mime.ParseMediaType(headerVal)
-
-	if err != nil {
-		return fmt.Errorf("Could not parse content-type header %v: %v", headerVal, err)
-	}
-
-	mediaTypeSplit := strings.Split(mediatype, "/")
-	subtype := ""
-	if len(mediaTypeSplit) == 2 {
-		subtype = mediaTypeSplit[1]
-	}
-
-	if mediaTypeSplit[0] == "multipart" {
-		if _, ok := params["boundary"]; ok {
-			mt.currentNode.Multipart = subtype
-			mt.currentNode.Boundary = params["boundary"]
+	if mt.currentNode.ContentType.Type == "multipart" {
+		if _, ok := mt.currentNode.ContentType.Params["boundary"]; ok {
+			mt.currentNode.Multipart = mt.currentNode.ContentType.SubType
+			mt.currentNode.Boundary = mt.currentNode.ContentType.Params["boundary"]
 		}
 	}
 	return nil
@@ -405,9 +425,9 @@ func (mt *MimeTree) Finalize() {
 		mt.processContentType()
 	}
 
-	var walker func(n *node)
+	var walker func(n *Node)
 
-	walker = func(n *node) {
+	walker = func(n *Node) {
 		// TODO: Handle content type 'message/rfc822'
 		lc := 0
 		size := 0
