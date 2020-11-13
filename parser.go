@@ -129,28 +129,24 @@ func (mt *MimeTree) createNode(parent *Node) *Node {
 
 type ParserCallback func(bodyReader io.Reader, mimeNode *Node) error
 
-func readNextLine(r *bufio.Reader, l []byte) ([]byte, error) {
-	for {
-		lineb, more, err := r.ReadLine()
+func readNextLine(r *bufio.Reader, l []byte) ([]byte, []byte, error) {
 
-		if err != nil {
-			return l, err
-		}
+	br := []byte("\n")
 
-		l = append(l, lineb...)
+	l, err := r.ReadBytes(byte('\n'))
 
-		if !more {
-			break
-		}
+	lLen := len(l)
+
+	if lLen >= 2 && l[lLen-2] == byte('\r') {
+		br = []byte("\r\n")
 	}
 
-	return l, nil
+	if err != nil {
+		return l, br, err
+	}
 
-}
+	return l, br, nil
 
-func peekNextLine(r *bufio.Reader, l []byte) ([]byte, error) {
-
-	return l, nil
 }
 
 type BodyReader struct {
@@ -249,7 +245,7 @@ func (mt *MimeTree) Parse(pc ParserCallback) error {
 	var readerr error = nil
 	for readerr != io.EOF {
 
-		nextLine, err := readNextLine(mt.rawReader, nil)
+		nextLine, lineBreak, err := readNextLine(mt.rawReader, nil)
 
 		readerr = err
 		if err != nil {
@@ -264,7 +260,7 @@ func (mt *MimeTree) Parse(pc ParserCallback) error {
 		case HEADER:
 			// This means end of a header section
 			// and start of body
-			if line == "" {
+			if line == string(lineBreak) {
 				err := mt.processHeader()
 				if err != nil {
 					return err
@@ -283,16 +279,17 @@ func (mt *MimeTree) Parse(pc ParserCallback) error {
 
 		case BODY:
 
-			if (mt.currentNode.parentBoundary != "") && (line == "--"+mt.currentNode.parentBoundary || line == "--"+mt.currentNode.parentBoundary+"--") {
-				if line == "--"+mt.currentNode.parentBoundary {
+			if (mt.currentNode.parentBoundary != "") && (line == "--"+mt.currentNode.parentBoundary+string(lineBreak) || line == "--"+mt.currentNode.parentBoundary+"--"+string(lineBreak)) {
+				if line == "--"+mt.currentNode.parentBoundary+string(lineBreak) {
 					mt.currentNode = mt.createNode(mt.currentNode.parentNode)
 				} else {
 					mt.currentNode = mt.currentNode.parentNode
 				}
-			} else if (mt.currentNode.Boundary != "") && (line == "--"+mt.currentNode.Boundary) {
+			} else if (mt.currentNode.Boundary != "") && (line == "--"+mt.currentNode.Boundary+string(lineBreak)) {
 				mt.currentNode = mt.createNode(mt.currentNode)
 			} else {
 				if mt.currentNode.parentBoundary != "" {
+
 					bodReader := newBodyReader(mt.currentNode.parentBoundary, mt.rawReader)
 
 					fullReader := io.MultiReader(bytes.NewReader(nextLine), bodReader)
@@ -438,20 +435,6 @@ func (mt *MimeTree) Finalize() {
 
 	walker = func(n *Node) {
 		// TODO: Handle content type 'message/rfc822'
-		lc := 0
-		size := 0
-		if len(n.Body) != 0 {
-			lc = len(n.Body) - 1
-
-			for i, _ := range n.Body {
-				// ensure proper line endings
-				n.Body[i] = string(newlineOrcarriage.ReplaceAll([]byte(n.Body[i]), []byte("\n\r")))
-				// Add the size
-				size += len(n.Body[i])
-			}
-		}
-		n.LineCount = lc
-		n.Size = size
 
 		for _, cn := range n.ChildNodes {
 			walker(cn)
