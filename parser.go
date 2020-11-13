@@ -272,6 +272,10 @@ func (mt *MimeTree) Parse(pc ParserCallback) error {
 				mt.currentNode.state = BODY
 			} else {
 				mt.currentNode.Headers = append(mt.currentNode.Headers, line)
+
+				if len(mt.currentNode.Headers) > MAX_HEADER_LINES {
+					return errMaxHeaderLines
+				}
 			}
 
 			break
