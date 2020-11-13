@@ -17,14 +17,14 @@ func main() {
 
 	// mimeTree.Tst()
 
-	callback := func(read []byte, r io.Reader, n *rfc2822.Node) error {
+	callback := func(r io.Reader, n *rfc2822.Node) error {
 		buf, err := ioutil.ReadAll(r)
 		if err != nil {
 			return err
 		}
-		buf = append(read, buf...)
 
 		n.Body = append(n.Body, string(buf))
+
 		return nil
 	}
 

@@ -127,7 +127,7 @@ func (mt *MimeTree) createNode(parent *Node) *Node {
 	return &newNode
 }
 
-type ParserCallback func(readBody []byte, bodyReader io.Reader, mimeNode *Node) error
+type ParserCallback func(bodyReader io.Reader, mimeNode *Node) error
 
 func readNextLine(r *bufio.Reader, l []byte) ([]byte, error) {
 	for {
@@ -146,6 +146,11 @@ func readNextLine(r *bufio.Reader, l []byte) ([]byte, error) {
 
 	return l, nil
 
+}
+
+func peekNextLine(r *bufio.Reader, l []byte) ([]byte, error) {
+
+	return l, nil
 }
 
 type BodyReader struct {
@@ -290,14 +295,18 @@ func (mt *MimeTree) Parse(pc ParserCallback) error {
 				if mt.currentNode.parentBoundary != "" {
 					bodReader := newBodyReader(mt.currentNode.parentBoundary, mt.rawReader)
 
-					err := pc(nextLine, bodReader, mt.currentNode)
+					fullReader := io.MultiReader(bytes.NewReader(nextLine), bodReader)
+
+					err := pc(fullReader, mt.currentNode)
 
 					if err != nil {
 						return err
 					}
 				} else if mt.currentNode.parentBoundary == "" {
 
-					err := pc(nextLine, mt.rawReader, mt.currentNode)
+					fullReader := io.MultiReader(bytes.NewReader(nextLine), mt.rawReader)
+
+					err := pc(fullReader, mt.currentNode)
 
 					if err != nil {
 						return err
