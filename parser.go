@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-var whitespace, linebreak, notNormalHeaderKey, newlineOrcarriage *regexp.Regexp
+var whitespace, linebreak, notNormalHeaderKey *regexp.Regexp
 
 var singleValueFields = []string{
 	"content-tansfer-encoding",
@@ -26,11 +26,12 @@ func init() {
 	// Compile all the regex
 	whitespace = regexp.MustCompile(`^\s`)
 	linebreak = regexp.MustCompile(`\s*\r?\n\s*`)
-	newlineOrcarriage = regexp.MustCompile(`\n?\r`)
 	notNormalHeaderKey = regexp.MustCompile(`[^a-zA-Z0-9\-*]`)
 }
 
 const MAX_MIME_NODES = 99
+const MAX_HEADER_LINES = 1000
+const MAX_LINE_OCTETS = 4000
 
 const HEADER = "header"
 const BODY = "body"
@@ -55,7 +56,6 @@ type Node struct {
 }
 
 type MimeTree struct {
-	rawScanner   *bufio.Scanner
 	rawReader    *bufio.Reader
 	MimetreeRoot *Node
 	nodeCount    int16
@@ -92,7 +92,6 @@ func NewMimeTree(raw io.Reader) *MimeTree {
 	}
 
 	mimeTree := MimeTree{
-		rawScanner:   bufio.NewScanner(raw),
 		rawReader:    bufio.NewReader(raw),
 		MimetreeRoot: &rootNode,
 		nodeCount:    0,
@@ -133,16 +132,16 @@ func readNextLine(r *bufio.Reader, l []byte) ([]byte, []byte, error) {
 
 	br := []byte("\n")
 
-	l, err := r.ReadBytes(byte('\n'))
+	l, err := readBytesWithLimit(r, byte('\n'), MAX_LINE_OCTETS)
+
+	if err != nil {
+		return l, br, err
+	}
 
 	lLen := len(l)
 
 	if lLen >= 2 && l[lLen-2] == byte('\r') {
 		br = []byte("\r\n")
-	}
-
-	if err != nil {
-		return l, br, err
 	}
 
 	return l, br, nil
