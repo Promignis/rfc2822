@@ -26,10 +26,12 @@ Content-Type: multipart/alternative; boundary="sub1"
 Content-Type: text/plain; charset="UTF-8"
 
 Hi this is the body
+Hi this is the body
 
 --sub1
 Content-Type: text/html; charset="UTF-8"
 
+<div dir="ltr">Hi this is the body<div><br></div></div>
 <div dir="ltr">Hi this is the body<div><br></div></div>
 
 --sub1--
@@ -41,8 +43,13 @@ Content-ID: <f_kgruatpx0>
 X-Attachment-Id: f_kgruatpx0
 
 U2FtcGxlVGV4dCBkYXRhIGhlcmUg
+U2FtcGxlVGV4dCBkYXRhIGhlcmUg
+U2FtcGxlVGV4dCBkYXRhIGhlcmUg
+U2FtcGxlVGV4dCBkYXRhIGhlcmUg
 --main1--
 `)
+
+var onlyHeaders = []byte("MIME-Version: 1.0\nFrom: revant jha <abc.94@gmail.com>\r\nDate: Tue, 27 Oct 2020 16:11:25 +0530\r\nMessage-ID: <CALa9RR=0AnAvVYBN_XeuZ+z51M7Em-i_RoYC3Ur8WmEt4h+mig@mail.gmail.com>\r\nSubject: test eml\r\nTo: efgh@promignis.com\n")
 
 var TestEml3 = []byte(`Delivered-To: efgh@promignis.com
 Received: by 2002:a02:c891:0:0:0:0:0 with SMTP id m17csp2767835jao;
@@ -58,3 +65,32 @@ Content-Type: text/plain; charset="UTF-8"
 Hi this is the body
 
 `)
+
+var encodedEml = []byte(`MIME-Version: 1.0
+Date: Thu, 19 Nov 2020 14:05:07 +0530
+Message-ID: <CALa9RRnWzEZxi1GEMnAxHYX=JqPNNef2UzJSdgVsuY46zanc=w@mail.gmail.com>
+Subject: sometest
+From: revant jha <revantjha.94@gmail.com>
+To: revant@promignis.com
+Content-Type: multipart/alternative; boundary="base"
+
+--base
+Content-Type: text/plain; charset="UTF-8"
+Content-Transfer-Encoding: base64
+
+4oiuIEXii4VkYSA9IFEsICBuIOKGkiDiiJ4sIOKIkSBmKGkpID0g4oiPIGcoaSksIOKIgHjiiIji
+hJ06IOKMiHjijIkgPSDiiJLijIriiJJ44oyLLCDOsSDiiKcgwqzOsiA9IMKsKMKszrEg4oioIM6y
+KSwNCg0KICDihJUg4oqGIOKEleKCgCDiioIg4oSkIOKKgiDihJog4oqCIOKEnSDiioIg4oSCLCDi
+iqUgPCBhIOKJoCBiIOKJoSBjIOKJpCBkIOKJqiDiiqQg4oeSIChBIOKHlCBCKSwNCg0KICAySOKC
+giArIE/igoIg4oeMIDJI4oKCTywgUiA9IDQuNyBrzqksIOKMgCAyMDAgbW0NCg==
+--base
+Content-Type: text/html; charset="UTF-8"
+Content-Transfer-Encoding: base64
+
+PGRpdiBkaXI9Imx0ciI+PHByZSBzdHlsZT0iY29sb3I6cmdiKDAsMCwwKSI+4oiuIEXii4VkYSA9
+IFEsICBuIOKGkiDiiJ4sIOKIkSBmKGkpID0g4oiPIGcoaSksIOKIgHjiiIjihJ06IOKMiHjijIkg
+PSDiiJLijIriiJJ44oyLLCDOsSDiiKcgwqzOsiA9IMKsKMKszrEg4oioIM6yKSwNCg0KICDihJUg
+4oqGIOKEleKCgCDiioIg4oSkIOKKgiDihJog4oqCIOKEnSDiioIg4oSCLCDiiqUgJmx0OyBhIOKJ
+oCBiIOKJoSBjIOKJpCBkIOKJqiDiiqQg4oeSIChBIOKHlCBCKSwNCg0KICAySOKCgiArIE/igoIg
+4oeMIDJI4oKCTywgUiA9IDQuNyBrzqksIOKMgCAyMDAgbW08L3ByZT48L2Rpdj4NCg==
+--base--`)

@@ -2,7 +2,11 @@ package rfc2822
 
 import (
 	"bufio"
+	"encoding/base64"
+	"fmt"
+	"io"
 	"mime"
+	"mime/quotedprintable"
 	"strings"
 )
 
@@ -89,4 +93,24 @@ func readBytesWithLimit(r *bufio.Reader, delim byte, limit int) ([]byte, error) 
 	}
 	copy(buf[n:], frag)
 	return buf, err
+}
+
+func validHeaderKeyByte(b byte) bool {
+	c := int(b)
+	return c >= 33 && c <= 126 && c != ':'
+}
+
+func encodingReader(enc string, r io.Reader) (io.Reader, error) {
+	var dec io.Reader
+	switch strings.ToLower(enc) {
+	case "quoted-printable":
+		dec = quotedprintable.NewReader(r)
+	case "base64":
+		dec = base64.NewDecoder(base64.StdEncoding, r)
+	case "7bit", "8bit", "binary", "":
+		dec = r
+	default:
+		return nil, fmt.Errorf("unhandled encoding %q", enc)
+	}
+	return dec, nil
 }

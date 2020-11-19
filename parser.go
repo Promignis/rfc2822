@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-var whitespace, linebreak, notNormalHeaderKey *regexp.Regexp
+var whitespace, linebreak *regexp.Regexp
 
 var singleValueFields = []string{
 	"content-tansfer-encoding",
@@ -26,7 +26,6 @@ func init() {
 	// Compile all the regex
 	whitespace = regexp.MustCompile(`^\s`)
 	linebreak = regexp.MustCompile(`\s*\r?\n\s*`)
-	notNormalHeaderKey = regexp.MustCompile(`[^a-zA-Z0-9\-*]`)
 }
 
 const MAX_MIME_NODES = 99
@@ -297,6 +296,17 @@ func (mt *MimeTree) Parse(pc ParserCallback) error {
 
 					fullReader := io.MultiReader(bytes.NewReader(nextLine), bodReader)
 
+					// Check for content transfer encoding
+					if enc, ok := mt.currentNode.ParsedHeader["content-transfer-encoding"]; ok {
+						if decodedReader, encErr := encodingReader(enc[0], fullReader); encErr != nil {
+							return encErr
+						} else {
+							fullReader = decodedReader
+						}
+					}
+
+					// TODO: Charset readers
+
 					err := pc(fullReader, mt.currentNode)
 
 					if err != nil {
@@ -345,16 +355,27 @@ func (mt *MimeTree) processHeader() error {
 				key = strings.ToLower(strings.TrimSpace(spl[0]))
 				value = strings.Join(spl[1:], ":")
 			} else if len(spl) == 1 {
+				// len 1 means no ":" was found. This is a malformed header line
+				// TODO: Maybe return a malformed header line error here
 				key = strings.ToLower(strings.TrimSpace(spl[0]))
 				value = ""
 			}
 
 			// TODO: Check if values are utf-7
 			value = string(linebreak.ReplaceAll([]byte(value), []byte("")))
+			value = strings.Trim(value, " ")
 
 			// Track headers that have strange looking keys, keep these
 			// in the seperate section
-			if notNormalHeaderKey.Match([]byte(key)) || len(key) > 100 {
+			validHeader := true
+			for _, c := range []byte(key) {
+				if !validHeaderKeyByte(c) {
+					validHeader = false
+					break
+				}
+			}
+
+			if !validHeader || len(key) > 100 || key == "" {
 				mt.currentNode.BadHeaders[key] = append(mt.currentNode.ParsedHeader[key], value)
 			} else {
 				mt.currentNode.ParsedHeader[key] = append(mt.currentNode.ParsedHeader[key], value)
@@ -420,11 +441,6 @@ func (mt *MimeTree) processContentType() error {
 		}
 	}
 	return nil
-
-}
-
-// convert content-type: 'text/plain; charset=utf-8' -> {value: 'text/plain', params:{charset: 'utf-8'}}
-func (mt *MimeTree) processHeaderValue() {
 
 }
 

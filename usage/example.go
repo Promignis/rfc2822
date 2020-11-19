@@ -11,11 +11,9 @@ import (
 )
 
 func main() {
-	reader := bytes.NewBuffer(TestEml2)
+	reader := bytes.NewBuffer(encodedEml)
 
 	mimeTree := rfc2822.NewMimeTree(reader)
-
-	// mimeTree.Tst()
 
 	callback := func(r io.Reader, n *rfc2822.Node) error {
 		buf, err := ioutil.ReadAll(r)
