@@ -35,9 +35,16 @@ const MAX_LINE_OCTETS = 4000
 const HEADER = "header"
 const BODY = "body"
 
+type tempState struct {
+	headerLines    []string
+	root           bool
+	state          string
+	parentNode     *Node
+	parentBoundary string
+}
+
 type Node struct {
 	ChildNodes []*Node
-	Headers    []string
 	// https://golang.org/pkg/net/textproto/#MIMEHeader
 	ParsedHeader       map[string][]string
 	BadHeaders         map[string][]string
@@ -48,13 +55,10 @@ type Node struct {
 	Boundary           string
 	LineCount          int
 	Size               int
-	root               bool
-	state              string
-	parentNode         *Node
-	parentBoundary     string
+	tstate             tempState
 }
 
-type MimeTree struct {
+type mimeTree struct {
 	rawReader    *bufio.Reader
 	MimetreeRoot *Node
 	nodeCount    int16
@@ -72,25 +76,29 @@ type ContentDisposition struct {
 	Params    map[string]string
 }
 
-func NewMimeTree(raw io.Reader) *MimeTree {
+func newMimeTree(raw io.Reader) *mimeTree {
 
-	rootNode := Node{
+	intialState := tempState{
 		root:           true,
-		ChildNodes:     []*Node{},
 		state:          "",
-		Headers:        []string{},
-		ParsedHeader:   map[string][]string{},
-		BadHeaders:     map[string][]string{},
-		Body:           []string{},
-		Multipart:      "",
 		parentBoundary: "",
-		Boundary:       "",
 		parentNode:     nil,
-		LineCount:      0,
-		Size:           0,
+		headerLines:    []string{},
 	}
 
-	mimeTree := MimeTree{
+	rootNode := Node{
+		ChildNodes:   []*Node{},
+		ParsedHeader: map[string][]string{},
+		BadHeaders:   map[string][]string{},
+		Body:         []string{},
+		Multipart:    "",
+		Boundary:     "",
+		LineCount:    0,
+		Size:         0,
+		tstate:       intialState,
+	}
+
+	mimeTree := mimeTree{
 		rawReader:    bufio.NewReader(raw),
 		MimetreeRoot: &rootNode,
 		nodeCount:    0,
@@ -102,22 +110,24 @@ func NewMimeTree(raw io.Reader) *MimeTree {
 	return &mimeTree
 }
 
-func (mt *MimeTree) createNode(parent *Node) *Node {
+func (mt *mimeTree) createNode(parent *Node) *Node {
 	mt.nodeCount++
 
-	newNode := Node{
-		state:          HEADER,
-		ChildNodes:     []*Node{},
-		Headers:        []string{},
-		ParsedHeader:   map[string][]string{},
-		BadHeaders:     map[string][]string{},
-		Body:           []string{},
-		Multipart:      "",
+	newTempState := tempState{state: HEADER,
+		headerLines:    []string{},
 		parentBoundary: parent.Boundary,
-		Boundary:       "",
-		parentNode:     parent,
-		LineCount:      0,
-		Size:           0,
+		parentNode:     parent}
+
+	newNode := Node{
+		ChildNodes:   []*Node{},
+		BadHeaders:   map[string][]string{},
+		Body:         []string{},
+		Multipart:    "",
+		ParsedHeader: map[string][]string{},
+		Boundary:     "",
+		LineCount:    0,
+		Size:         0,
+		tstate:       newTempState,
 	}
 
 	parent.ChildNodes = append(parent.ChildNodes, &newNode)
@@ -238,7 +248,7 @@ func matchAfterPrefix(buf, prefix []byte, readErr error) int {
 	return -1
 }
 
-func (mt *MimeTree) Parse(pc ParserCallback) error {
+func (mt *mimeTree) parse(pc ParserCallback) error {
 	line := ""
 	var readerr error = nil
 	for readerr != io.EOF {
@@ -254,7 +264,7 @@ func (mt *MimeTree) Parse(pc ParserCallback) error {
 		}
 		line = string(nextLine)
 
-		switch mt.currentNode.state {
+		switch mt.currentNode.tstate.state {
 		case HEADER:
 			// This means end of a header section
 			// and start of body
@@ -268,11 +278,11 @@ func (mt *MimeTree) Parse(pc ParserCallback) error {
 					return err
 				}
 
-				mt.currentNode.state = BODY
+				mt.currentNode.tstate.state = BODY
 			} else {
-				mt.currentNode.Headers = append(mt.currentNode.Headers, line)
+				mt.currentNode.tstate.headerLines = append(mt.currentNode.tstate.headerLines, line)
 
-				if len(mt.currentNode.Headers) > MAX_HEADER_LINES {
+				if len(mt.currentNode.tstate.headerLines) > MAX_HEADER_LINES {
 					return errMaxHeaderLines
 				}
 			}
@@ -280,47 +290,38 @@ func (mt *MimeTree) Parse(pc ParserCallback) error {
 			break
 
 		case BODY:
-
-			if (mt.currentNode.parentBoundary != "") && (line == "--"+mt.currentNode.parentBoundary+string(lineBreak) || line == "--"+mt.currentNode.parentBoundary+"--"+string(lineBreak)) {
-				if line == "--"+mt.currentNode.parentBoundary+string(lineBreak) {
-					mt.currentNode = mt.createNode(mt.currentNode.parentNode)
+			var fullReader io.Reader
+			if (mt.currentNode.tstate.parentBoundary != "") && (line == "--"+mt.currentNode.tstate.parentBoundary+string(lineBreak) || line == "--"+mt.currentNode.tstate.parentBoundary+"--"+string(lineBreak)) {
+				if line == "--"+mt.currentNode.tstate.parentBoundary+string(lineBreak) {
+					mt.currentNode = mt.createNode(mt.currentNode.tstate.parentNode)
 				} else {
-					mt.currentNode = mt.currentNode.parentNode
+					mt.currentNode = mt.currentNode.tstate.parentNode
 				}
 			} else if (mt.currentNode.Boundary != "") && (line == "--"+mt.currentNode.Boundary+string(lineBreak)) {
 				mt.currentNode = mt.createNode(mt.currentNode)
 			} else {
-				if mt.currentNode.parentBoundary != "" {
+				if mt.currentNode.tstate.parentBoundary != "" {
+					bodReader := newBodyReader(mt.currentNode.tstate.parentBoundary, mt.rawReader)
+					fullReader = io.MultiReader(bytes.NewReader(nextLine), bodReader)
+				} else if mt.currentNode.tstate.parentBoundary == "" {
+					fullReader = io.MultiReader(bytes.NewReader(nextLine), mt.rawReader)
+				}
 
-					bodReader := newBodyReader(mt.currentNode.parentBoundary, mt.rawReader)
-
-					fullReader := io.MultiReader(bytes.NewReader(nextLine), bodReader)
-
-					// Check for content transfer encoding
-					if enc, ok := mt.currentNode.ParsedHeader["content-transfer-encoding"]; ok {
-						if decodedReader, encErr := encodingReader(enc[0], fullReader); encErr != nil {
-							return encErr
-						} else {
-							fullReader = decodedReader
-						}
+				// Check for content transfer encoding
+				if enc, ok := mt.currentNode.ParsedHeader["content-transfer-encoding"]; ok {
+					if decodedReader, encErr := encodingReader(enc[0], fullReader); encErr != nil {
+						return encErr
+					} else {
+						fullReader = decodedReader
 					}
+				}
 
-					// TODO: Charset readers
+				// TODO: Charset readers
 
-					err := pc(fullReader, mt.currentNode)
+				err := pc(fullReader, mt.currentNode)
 
-					if err != nil {
-						return err
-					}
-				} else if mt.currentNode.parentBoundary == "" {
-
-					fullReader := io.MultiReader(bytes.NewReader(nextLine), mt.rawReader)
-
-					err := pc(fullReader, mt.currentNode)
-
-					if err != nil {
-						return err
-					}
+				if err != nil {
+					return err
 				}
 			}
 
@@ -340,10 +341,10 @@ func (mt *MimeTree) Parse(pc ParserCallback) error {
 	return nil
 }
 
-func (mt *MimeTree) processHeader() error {
+func (mt *mimeTree) processHeader() error {
 	var key, value string
 
-	headers := mt.currentNode.Headers
+	headers := mt.currentNode.tstate.headerLines
 
 	for i := (len(headers) - 1); i >= 0; i-- {
 		if i > 0 && whitespace.Match([]byte(headers[i])) {
@@ -416,7 +417,7 @@ func (mt *MimeTree) processHeader() error {
 	return nil
 }
 
-func (mt *MimeTree) processContentType() error {
+func (mt *mimeTree) processContentType() error {
 
 	if _, ok := mt.currentNode.ParsedHeader["content-type"]; !ok {
 		return nil
@@ -438,14 +439,18 @@ func (mt *MimeTree) processContentType() error {
 		if _, ok := mt.currentNode.ContentType.Params["boundary"]; ok {
 			mt.currentNode.Multipart = mt.currentNode.ContentType.SubType
 			mt.currentNode.Boundary = mt.currentNode.ContentType.Params["boundary"]
+		} else {
+			// No boundary found. Return error
+			return errNoBoundary
 		}
 	}
 	return nil
 
 }
 
-func (mt *MimeTree) Finalize() {
-	if mt.currentNode.state == HEADER {
+func (mt *mimeTree) finalize() {
+
+	if mt.currentNode.tstate.state == HEADER {
 		mt.processHeader()
 		mt.processContentType()
 	}
@@ -460,15 +465,32 @@ func (mt *MimeTree) Finalize() {
 		}
 
 		// Empty out some unnecesary states
-		n.parentNode = nil
-		n.state = ""
+		n.tstate.parentNode = nil
+		n.tstate.state = ""
+		n.tstate.headerLines = []string{}
 		if len(n.ChildNodes) == 0 {
 			n.ChildNodes = nil
 		}
-		n.parentBoundary = ""
+		n.tstate.parentBoundary = ""
 	}
 
 	walker(mt.MimetreeRoot)
 
 	mt.currentNode = nil
+}
+
+func ParseMime(r io.Reader, pc ParserCallback) (*Node, error) {
+	mimeTree := newMimeTree(r)
+
+	err := mimeTree.parse(pc)
+
+	if err != nil {
+		return &Node{}, err
+	}
+
+	mimeTree.finalize()
+
+	root := mimeTree.MimetreeRoot.ChildNodes[0]
+
+	return root, nil
 }

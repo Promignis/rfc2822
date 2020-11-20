@@ -13,8 +13,6 @@ import (
 func main() {
 	reader := bytes.NewBuffer(encodedEml)
 
-	mimeTree := rfc2822.NewMimeTree(reader)
-
 	callback := func(r io.Reader, n *rfc2822.Node) error {
 		buf, err := ioutil.ReadAll(r)
 		if err != nil {
@@ -23,20 +21,18 @@ func main() {
 
 		n.Body = append(n.Body, string(buf))
 
+		fmt.Println(n.Body)
+
 		return nil
 	}
 
-	err := mimeTree.Parse(callback)
+	treeRoot, err := rfc2822.ParseMime(reader, callback)
 
 	if err != nil {
 		fmt.Println("error while parsing", err)
 	}
 
-	mimeTree.Finalize()
-
-	root := mimeTree.MimetreeRoot.ChildNodes[0]
-
-	jsonVal, err := json.Marshal(root)
+	jsonVal, err := json.Marshal(treeRoot)
 	if err != nil {
 		fmt.Println("error while marshaling", err)
 	}
