@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/ioutil"
 
 	"github.com/Promignis/rfc2822"
@@ -13,15 +12,13 @@ import (
 func main() {
 	reader := bytes.NewBuffer(encodedEml)
 
-	callback := func(r io.Reader, n *rfc2822.Node) error {
-		buf, err := ioutil.ReadAll(r)
+	callback := func(n *rfc2822.Node) error {
+		buf, err := ioutil.ReadAll(n)
 		if err != nil {
 			return err
 		}
 
 		n.Body = append(n.Body, string(buf))
-
-		fmt.Println(n.Body)
 
 		return nil
 	}

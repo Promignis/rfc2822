@@ -41,6 +41,7 @@ type tempState struct {
 	state          string
 	parentNode     *Node
 	parentBoundary string
+	bodyReader     io.Reader
 }
 
 type Node struct {
@@ -56,6 +57,14 @@ type Node struct {
 	LineCount          int
 	Size               int
 	tstate             tempState
+}
+
+func (n *Node) Read(d []byte) (int, error) {
+	i, err := n.tstate.bodyReader.Read(d)
+	n.Size += i
+	// TODO: Put the bytes into node.Body for a particular config
+	// right now callback has to explicitly put the body inside node.Body
+	return i, err
 }
 
 type mimeTree struct {
@@ -135,7 +144,7 @@ func (mt *mimeTree) createNode(parent *Node) *Node {
 	return &newNode
 }
 
-type ParserCallback func(bodyReader io.Reader, mimeNode *Node) error
+type ParserCallback func(mimeNode *Node) error
 
 func readNextLine(r *bufio.Reader, l []byte) ([]byte, []byte, error) {
 
@@ -318,7 +327,9 @@ func (mt *mimeTree) parse(pc ParserCallback) error {
 
 				// TODO: Charset readers
 
-				err := pc(fullReader, mt.currentNode)
+				mt.currentNode.tstate.bodyReader = fullReader
+
+				err := pc(mt.currentNode)
 
 				if err != nil {
 					return err
@@ -464,7 +475,7 @@ func (mt *mimeTree) finalize() {
 			walker(cn)
 		}
 
-		// Empty out some unnecesary states
+		// Empty out temp states
 		n.tstate.parentNode = nil
 		n.tstate.state = ""
 		n.tstate.headerLines = []string{}
@@ -472,6 +483,7 @@ func (mt *mimeTree) finalize() {
 			n.ChildNodes = nil
 		}
 		n.tstate.parentBoundary = ""
+		n.tstate.bodyReader = nil
 	}
 
 	walker(mt.MimetreeRoot)
