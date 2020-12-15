@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"log"
 
 	"github.com/Promignis/mime"
 )
@@ -12,21 +12,30 @@ import (
 func main() {
 	reader := bytes.NewBuffer(encodedEml)
 
-	callback := func(n *rfc2822.Node) error {
-		buf, err := ioutil.ReadAll(n)
-		if err != nil {
-			return err
-		}
+	// callback := func(n *mime.Node) error {
+	// 	buf, err := ioutil.ReadAll(n)
+	// 	if err != nil {
+	// 		return err
+	// 	}
 
-		n.Body = append(n.Body, string(buf))
+	// 	n.Body = append(n.Body, string(buf))
 
-		return nil
-	}
+	// 	fmt.Println(n.Body, "------------")
 
-	treeRoot, err := rfc2822.ParseMime(reader, callback)
+	// 	return nil
+	// }
+
+	sm := mime.NewStructuredMime()
+
+	dummyStore := newSampleStore()
+
+	smCallback := mime.GetStorageCallback(&sm, dummyStore)
+	hc := mime.GetRootHeaderCallback(&sm)
+
+	treeRoot, err := mime.ParseMime(reader, smCallback, hc)
 
 	if err != nil {
-		fmt.Println("error while parsing", err)
+		log.Fatal("error while parsing", err)
 	}
 
 	jsonVal, err := json.Marshal(treeRoot)

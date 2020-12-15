@@ -144,7 +144,8 @@ func (mt *mimeTree) createNode(parent *Node) *Node {
 	return &newNode
 }
 
-type ParserCallback func(mimeNode *Node) error
+type BodyCallback func(mimeNode *Node) error
+type RootHeaderCallback func(parsedHeader map[string][]string) error
 
 func readNextLine(r *bufio.Reader, l []byte) ([]byte, []byte, error) {
 
@@ -257,7 +258,7 @@ func matchAfterPrefix(buf, prefix []byte, readErr error) int {
 	return -1
 }
 
-func (mt *mimeTree) parse(pc ParserCallback) error {
+func (mt *mimeTree) parse(pc BodyCallback, hc RootHeaderCallback) error {
 	line := ""
 	var readerr error = nil
 	for readerr != io.EOF {
@@ -285,6 +286,17 @@ func (mt *mimeTree) parse(pc ParserCallback) error {
 				err = mt.processContentType()
 				if err != nil {
 					return err
+				}
+
+				fmt.Println("------------------------------")
+				fmt.Println(mt.currentNode.tstate.parentNode.tstate.root, mt.currentNode.ParsedHeader)
+
+				// Call root header callback
+				if mt.currentNode.tstate.parentNode.tstate.root && hc != nil {
+					err := hc(mt.currentNode.ParsedHeader)
+					if err != nil {
+						return fmt.Errorf("Error parsing header: %v", err)
+					}
 				}
 
 				mt.currentNode.tstate.state = BODY
@@ -400,7 +412,7 @@ func (mt *mimeTree) processHeader() error {
 		mt.currentNode.ParsedHeader["content-type"] = []string{"text/plain"}
 	}
 
-	// Make sure following fields have only songle values
+	// Make sure following fields have only single values
 	for _, k := range singleValueFields {
 		if _, ok := mt.currentNode.ParsedHeader[k]; ok {
 			// Basically pop the last value
@@ -491,10 +503,10 @@ func (mt *mimeTree) finalize() {
 	mt.currentNode = nil
 }
 
-func ParseMime(r io.Reader, pc ParserCallback) (*Node, error) {
+func ParseMime(r io.Reader, bc BodyCallback, hc RootHeaderCallback) (*Node, error) {
 	mimeTree := newMimeTree(r)
 
-	err := mimeTree.parse(pc)
+	err := mimeTree.parse(bc, hc)
 
 	if err != nil {
 		return &Node{}, err

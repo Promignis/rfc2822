@@ -66,6 +66,27 @@ Hi this is the body
 
 `)
 
+var encoded_headers = []byte(`Delivered-To: efgh@promignis.com
+Received: by 2002:a02:c891:0:0:0:0:0 with SMTP id m17csp2767835jao;
+		Sun, 25 Oct 2020 18:04:21 -0700 (PDT)
+MIME-Version: 1.0
+From: =?US-ASCII?Q?Test_QP_Subject=21?= <abc.94@gmail.com>
+Date: Tue, 27 Oct 2020 16:11:25 +0530
+Message-ID: <CALa9RR=0AnAvVYBN_XeuZ+z51M7Em-i_RoYC3Ur8WmEt4h+mig@mail.gmail.com>
+Subject: test eml
+To: =?US-ASCII?Q?Keith_Moore?= <efgh@promignis.com>, =?ISO-8859-1?Q?Keld_J=F8rn_Simonsen?= <abcd@promignis.com>
+To: =?ISO-8859-1?Q?Andr=E9?= <querty@promignis.com>, "=?big5?q?=a1=5d_=a1=61_=a1=71?=" <asdf@promignis.com>
+From: James Hillyerd <james@hillyerd.com>
+Subject: =?ISO-8859-1?B?SWYgeW91IGNhbiByZWFkIHRoaXMgeW8=?=
+		=?ISO-8859-2?B?dSB1bmRlcnN0YW5kIHRoZSBleGFtcGxlLg==?=
+Content-Type: text/plain; charset="UTF-8"
+
+Hi this is the body
+
+`)
+
+var encoded_domain = []byte(``)
+
 var encodedEml = []byte(`MIME-Version: 1.0
 Date: Thu, 19 Nov 2020 14:05:07 +0530
 Message-ID: <CALa9RRnWzEZxi1GEMnAxHYX=JqPNNef2UzJSdgVsuY46zanc=w@mail.gmail.com>
@@ -94,3 +115,28 @@ PSDiiJLijIriiJJ44oyLLCDOsSDiiKcgwqzOsiA9IMKsKMKszrEg4oioIM6yKSwNCg0KICDihJUg
 oCBiIOKJoSBjIOKJpCBkIOKJqiDiiqQg4oeSIChBIOKHlCBCKSwNCg0KICAySOKCgiArIE/igoIg
 4oeMIDJI4oKCTywgUiA9IDQuNyBrzqksIOKMgCAyMDAgbW08L3ByZT48L2Rpdj4NCg==
 --base--`)
+
+var mixedEncoding = `Delivered-To: revant@promignis.com
+Received: by 2002:ac2:5327:0:0:0:0:0 with SMTP id f7csp4584763lfh;
+        Mon, 30 Nov 2020 02:56:06 -0800 (PST)
+MIME-Version: 1.0
+From: revant jha <revantjha.94@gmail.com>
+Date: Mon, 30 Nov 2020 16:25:54 +0530
+Message-ID: <CALa9RR=+o+PR6kTbCXoGCCwBavJtdPz2_hA-kz1ov0PMeJM95g@mail.gmail.com>
+Subject: hi
+To: revant@promignis.com
+Content-Type: multipart/alternative; boundary="0000000000005b08b505b550db3f"
+
+--0000000000005b08b505b550db3f
+Content-Type: text/plain; charset="UTF-8"
+Content-Transfer-Encoding: base64
+
+Y2FmZcyBDQo=
+--0000000000005b08b505b550db3f
+Content-Type: text/html; charset="UTF-8"
+Content-Transfer-Encoding: quoted-printable
+
+<div dir=3D"ltr">cafe=CC=81<br></div>
+
+--0000000000005b08b505b550db3f--
+`
