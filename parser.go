@@ -1,4 +1,4 @@
-package rfc2822
+package mime
 
 import (
 	"bufio"

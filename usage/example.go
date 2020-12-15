@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 
-	"github.com/Promignis/rfc2822"
+	"github.com/Promignis/mime"
 )
 
 func main() {
