@@ -94,14 +94,8 @@ type Store interface {
 	Get(key string) (io.ReadCloser, error)
 }
 
-// func GetStructuredMime(root *Node, attachments []BodyData) (StructuredMime, error) {
-
-// 	return StructuredMime{}, nil
-// }
-
 func GetRootHeaderCallback(sm *StructuredMime) func(parsedHeaders map[string][]string) error {
 	return func(parsedHeaders map[string][]string) error {
-		fmt.Println("calling hc.....")
 		for k, v := range parsedHeaders {
 			switch k {
 			case "subject":
@@ -168,22 +162,12 @@ func GetRootHeaderCallback(sm *StructuredMime) func(parsedHeaders map[string][]s
 					irts = append(irts, res...)
 				}
 				sm.References = append(sm.References, irts...)
-			case "priority":
-			case "x-priority":
-			case "x-msmail-priority":
-			case "importance":
+			case "priority", "x-priority", "x-msmail-priority", "importance":
 				// Priority parser
 				// Could be a number like "1" or a string "High"
 				// Right now keeping the raw string, maybe add a parser later
 				sm.Priority = v[len(v)-1] // Use the latest header if there were more than one
-			case "from":
-			case "to":
-			case "cc":
-			case "bcc":
-			case "sender":
-			case "reply-to":
-			case "delivered-to":
-			case "return-path":
+			case "to", "from", "cc", "bcc", "sender", "reply-to", "delivered-to", "return-path":
 				// UTF8 email addresses according to the RFCs 5890, 5891 and 5892 are left in unicode
 				// they are not parsed into puny-code.
 				var parsedAddresses []*mail.Address

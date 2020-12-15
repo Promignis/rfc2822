@@ -288,9 +288,6 @@ func (mt *mimeTree) parse(pc BodyCallback, hc RootHeaderCallback) error {
 					return err
 				}
 
-				fmt.Println("------------------------------")
-				fmt.Println(mt.currentNode.tstate.parentNode.tstate.root, mt.currentNode.ParsedHeader)
-
 				// Call root header callback
 				if mt.currentNode.tstate.parentNode.tstate.root && hc != nil {
 					err := hc(mt.currentNode.ParsedHeader)
