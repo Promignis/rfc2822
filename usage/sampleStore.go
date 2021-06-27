@@ -3,7 +3,7 @@ package main
 import (
 	"io"
 
-	"github.com/Promignis/mime"
+	mime "github.com/Promignis/rfc2822"
 )
 
 type SampleStore struct{}

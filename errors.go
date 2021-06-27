@@ -1,4 +1,4 @@
-package mime
+package rfc2822
 
 import (
 	"errors"

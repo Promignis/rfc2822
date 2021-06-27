@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/Promignis/mime"
+	mime "github.com/Promignis/rfc2822"
 )
 
 func main() {
