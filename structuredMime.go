@@ -52,7 +52,7 @@ type StructuredMime struct {
 	ReturnPath     []Address
 	Priority       string
 	MessageID      string
-	InReplyTo      string
+	InReplyTo      []string
 	Date           time.Time
 	// Imap
 	MimeTree *Node
@@ -77,7 +77,7 @@ func NewStructuredMime() StructuredMime {
 		ReturnPath:     []Address{},
 		Priority:       "",
 		MessageID:      "",
-		InReplyTo:      "",
+		InReplyTo:      []string{},
 		Date:           time.Time{},
 		// Imap
 		MimeTree: nil,
@@ -161,7 +161,7 @@ func GetRootHeaderCallback(sm *StructuredMime) func(parsedHeaders map[string][]s
 					}
 					irts = append(irts, res...)
 				}
-				sm.References = append(sm.References, irts...)
+				sm.InReplyTo = append(sm.InReplyTo, irts...)
 			case "priority", "x-priority", "x-msmail-priority", "importance":
 				// Priority parser
 				// Could be a number like "1" or a string "High"
@@ -202,12 +202,29 @@ func GetRootHeaderCallback(sm *StructuredMime) func(parsedHeaders map[string][]s
 						}
 					}
 				}
-				// address parser
 			default:
 				// put it in the headers thing
 				sm.Headers[k] = v
 			}
 		}
+
+		//Validations:
+
+		// https://datatracker.ietf.org/doc/html/rfc5322#section-3.6.2
+		if len(sm.From) == 0 && len(sm.Sender) == 0 {
+			return fmt.Errorf("From and Sender headers both can not be 0")
+		}
+		/*
+			If the from field contains more than one mailbox specification
+			in the mailbox-list, then the sender field, containing the field name "Sender" and a
+			single mailbox specification, MUST appear in the message.
+		*/
+		if len(sm.From) > 1 {
+			if len(sm.Sender) != 1 {
+				return fmt.Errorf("Sender header is neeed when there are multiple From values")
+			}
+		}
+
 		return nil
 	}
 }
@@ -225,6 +242,20 @@ func GetStorageCallback(sm *StructuredMime, store Store) func(n *Node) error {
 		} else if n.ContentDisposition.MediaType != "inline" {
 			isAttachment = false
 		}
+
+		// Content Type can be of the following types
+		// message, multipart, text, application
+		// for now anything aside from
+		/*
+			text/
+				plain
+				html
+			multipart/
+				mixed
+				alternate
+				related
+		*/
+		// is not processed , they will be treated as attachments/blob
 
 		// If of type html/text
 		// keep putting in body till a limit, if limit crossed then create a new reader and put in store

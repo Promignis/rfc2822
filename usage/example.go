@@ -34,6 +34,19 @@ func main() {
 
 	treeRoot, err := mime.ParseMime(reader, smCallback, hc)
 
+	fmt.Println("========= SM ============")
+	fmt.Println(sm.Date)
+	fmt.Println(sm.Subject)
+	fmt.Println("sm.From", sm.From)
+	fmt.Println("to", sm.To)
+	fmt.Println("bcc", sm.Bcc)
+	fmt.Println("cc", sm.Cc)
+	fmt.Println(sm.HTML)
+	fmt.Println(sm.Text)
+	fmt.Println("ref", sm.References)
+	fmt.Println(sm.InReplyTo)
+	fmt.Println("msgid:", sm.MessageID)
+
 	if err != nil {
 		log.Fatal("error while parsing", err)
 	}

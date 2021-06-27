@@ -29,6 +29,16 @@ func ParseContentType(s string) (ct ContentType, err error) {
 	return
 }
 
+// check if list of string contain item
+func Contains(val string, items []string) bool {
+	for _, item := range items {
+		if val == item {
+			return true
+		}
+	}
+	return false
+}
+
 /*
 	Note:
 	The MIME specifications specify that the proper method for encoding Content-Type and Content-Disposition parameter values is the method described in rfc2231.

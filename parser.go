@@ -35,6 +35,11 @@ const MAX_LINE_OCTETS = 4000
 const HEADER = "header"
 const BODY = "body"
 
+var ValidContentDispositions = []string{"inline", "attachment"}
+
+// For images with large attachemts this could cause heap churn. Take a look
+const BufferReaderSize = 50 * 1024
+
 type tempState struct {
 	headerLines    []string
 	root           bool
@@ -108,7 +113,7 @@ func newMimeTree(raw io.Reader) *mimeTree {
 	}
 
 	mimeTree := mimeTree{
-		rawReader:    bufio.NewReader(raw),
+		rawReader:    bufio.NewReaderSize(raw, BufferReaderSize),
 		MimetreeRoot: &rootNode,
 		nodeCount:    0,
 		currentNode:  nil,
@@ -422,6 +427,11 @@ func (mt *mimeTree) processHeader() error {
 		if err != nil {
 			return fmt.Errorf("Could not parse content disposition %v: %v", contDisp[0], err)
 		}
+
+		if !Contains(parsedContentDisp.MediaType, ValidContentDispositions) {
+			return fmt.Errorf("Invalid content disposition value: %v", parsedContentDisp.MediaType)
+		}
+
 		mt.currentNode.ContentDisposition = parsedContentDisp
 	}
 
