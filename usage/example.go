@@ -11,14 +11,14 @@ import (
 )
 
 func main() {
-	reader := bytes.NewBuffer(encodedEml)
+	reader := bytes.NewBuffer(TestEml2NoEpilogue)
 
 	sm := mime.NewFormattedRootHeaders()
 
 	smCallback := bodyCallback()
 	hc := mime.GetRootHeaderCallback(&sm)
 
-	treeRoot, err := mime.ParseMime(reader, smCallback, hc)
+	treeRoot, err := mime.ParseMime(reader, smCallback, hc, false)
 
 	fmt.Println("========= SM ============")
 	fmt.Println(sm.Date)
@@ -83,9 +83,10 @@ func bodyCallback() func(n *mime.Node) error {
 		if err != nil {
 			return err
 		}
-
+		fmt.Println("\nbody..........................")
 		fmt.Println("attachments: ", isAttachment)
-		fmt.Println(string(buf), "------------")
+		fmt.Println(string(buf))
+		fmt.Println("body over..................\n")
 
 		return nil
 	}

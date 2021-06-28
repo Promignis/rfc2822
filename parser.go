@@ -52,16 +52,20 @@ type tempState struct {
 type Node struct {
 	ChildNodes []*Node
 	// https://golang.org/pkg/net/textproto/#MIMEHeader
-	ParsedHeader       map[string][]string
-	BadHeaders         map[string][]string
-	Body               []string
-	Multipart          string
-	ContentType        ContentType
-	ContentDisposition ContentDisposition
-	Boundary           string
-	LineCount          int
-	Size               int
-	tstate             tempState
+	ParsedHeader        map[string][]string
+	BadHeaders          map[string][]string
+	Body                []string
+	Multipart           string
+	MultipartSeenBStart bool
+	MultipartSeenBEnd   bool
+	Preamble            string
+	Epilogue            string
+	ContentType         ContentType
+	ContentDisposition  ContentDisposition
+	Boundary            string
+	LineCount           int
+	Size                int
+	tstate              tempState
 }
 
 func (n *Node) Read(d []byte) (int, error) {
@@ -101,15 +105,17 @@ func newMimeTree(raw io.Reader) *mimeTree {
 	}
 
 	rootNode := Node{
-		ChildNodes:   []*Node{},
-		ParsedHeader: map[string][]string{},
-		BadHeaders:   map[string][]string{},
-		Body:         []string{},
-		Multipart:    "",
-		Boundary:     "",
-		LineCount:    0,
-		Size:         0,
-		tstate:       intialState,
+		ChildNodes:          []*Node{},
+		ParsedHeader:        map[string][]string{},
+		BadHeaders:          map[string][]string{},
+		Body:                []string{},
+		Multipart:           "",
+		Boundary:            "",
+		LineCount:           0,
+		Size:                0,
+		MultipartSeenBStart: false,
+		MultipartSeenBEnd:   false,
+		tstate:              intialState,
 	}
 
 	mimeTree := mimeTree{
@@ -133,15 +139,17 @@ func (mt *mimeTree) createNode(parent *Node) *Node {
 		parentNode:     parent}
 
 	newNode := Node{
-		ChildNodes:   []*Node{},
-		BadHeaders:   map[string][]string{},
-		Body:         []string{},
-		Multipart:    "",
-		ParsedHeader: map[string][]string{},
-		Boundary:     "",
-		LineCount:    0,
-		Size:         0,
-		tstate:       newTempState,
+		ChildNodes:          []*Node{},
+		BadHeaders:          map[string][]string{},
+		Body:                []string{},
+		Multipart:           "",
+		MultipartSeenBStart: false,
+		MultipartSeenBEnd:   false,
+		ParsedHeader:        map[string][]string{},
+		Boundary:            "",
+		LineCount:           0,
+		Size:                0,
+		tstate:              newTempState,
 	}
 
 	parent.ChildNodes = append(parent.ChildNodes, &newNode)
@@ -263,7 +271,7 @@ func matchAfterPrefix(buf, prefix []byte, readErr error) int {
 	return -1
 }
 
-func (mt *mimeTree) parse(pc BodyCallback, hc RootHeaderCallback) error {
+func (mt *mimeTree) parse(pc BodyCallback, hc RootHeaderCallback, storePreambleAndEpilogue bool) error {
 	line := ""
 	var readerr error = nil
 	for readerr != io.EOF {
@@ -314,15 +322,39 @@ func (mt *mimeTree) parse(pc BodyCallback, hc RootHeaderCallback) error {
 
 		case BODY:
 			var fullReader io.Reader
-			if (mt.currentNode.tstate.parentBoundary != "") && (line == "--"+mt.currentNode.tstate.parentBoundary+string(lineBreak) || line == "--"+mt.currentNode.tstate.parentBoundary+"--"+string(lineBreak)) {
-				if line == "--"+mt.currentNode.tstate.parentBoundary+string(lineBreak) {
-					mt.currentNode = mt.createNode(mt.currentNode.tstate.parentNode)
-				} else {
-					mt.currentNode = mt.currentNode.tstate.parentNode
-				}
-			} else if (mt.currentNode.Boundary != "") && (line == "--"+mt.currentNode.Boundary+string(lineBreak)) {
+
+			switch {
+			case (mt.currentNode.tstate.parentBoundary != "") && (line == "--"+mt.currentNode.tstate.parentBoundary+string(lineBreak)):
+				mt.currentNode = mt.createNode(mt.currentNode.tstate.parentNode)
+				break
+			case (mt.currentNode.tstate.parentBoundary != "") && (line == "--"+mt.currentNode.tstate.parentBoundary+"--"+string(lineBreak)):
+				mt.currentNode = mt.currentNode.tstate.parentNode
+				mt.currentNode.MultipartSeenBEnd = true
+				break
+			case (mt.currentNode.Boundary != "") && (line == "--"+mt.currentNode.Boundary+string(lineBreak)):
+				mt.currentNode.MultipartSeenBStart = true
 				mt.currentNode = mt.createNode(mt.currentNode)
-			} else {
+				break
+			default:
+
+				// https://datatracker.ietf.org/doc/html/rfc1521
+				// Check for Preamble
+				if mt.currentNode.Boundary != "" && mt.currentNode.MultipartSeenBStart == false {
+					if storePreambleAndEpilogue {
+						mt.currentNode.Preamble = mt.currentNode.Preamble + line
+					}
+					break
+				}
+
+				// Check for Epilogue
+				if mt.currentNode.Boundary != "" && mt.currentNode.MultipartSeenBEnd == true {
+					if storePreambleAndEpilogue {
+						mt.currentNode.Epilogue = mt.currentNode.Epilogue + line
+					}
+					break
+				}
+
+				// Handle body
 				if mt.currentNode.tstate.parentBoundary != "" {
 					bodReader := newBodyReader(mt.currentNode.tstate.parentBoundary, mt.rawReader)
 					fullReader = io.MultiReader(bytes.NewReader(nextLine), bodReader)
@@ -339,7 +371,7 @@ func (mt *mimeTree) parse(pc BodyCallback, hc RootHeaderCallback) error {
 					}
 				}
 
-				// TODO: Charset readers
+				// TODO: Charset readers (refer enmime)
 
 				mt.currentNode.tstate.bodyReader = fullReader
 
@@ -348,13 +380,14 @@ func (mt *mimeTree) parse(pc BodyCallback, hc RootHeaderCallback) error {
 				if err != nil {
 					return err
 				}
+
+				break
 			}
 
 			break
 
 		default:
 			return fmt.Errorf("Unexpected state")
-
 		}
 
 		if mt.nodeCount > MAX_MIME_NODES {
@@ -510,10 +543,10 @@ func (mt *mimeTree) finalize() {
 	mt.currentNode = nil
 }
 
-func ParseMime(r io.Reader, bc BodyCallback, hc RootHeaderCallback) (*Node, error) {
+func ParseMime(r io.Reader, bc BodyCallback, hc RootHeaderCallback, storePreambleAndEpilogue bool) (*Node, error) {
 	mimeTree := newMimeTree(r)
 
-	err := mimeTree.parse(bc, hc)
+	err := mimeTree.parse(bc, hc, storePreambleAndEpilogue)
 
 	if err != nil {
 		return &Node{}, err
