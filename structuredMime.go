@@ -24,6 +24,7 @@ type Address struct {
 
 type FormattedRootHeaders struct {
 	Headers     map[string][]string
+	BadHeaders  map[string][]string
 	Subject     string
 	References  []string
 	From        []Address
@@ -44,6 +45,7 @@ type FormattedRootHeaders struct {
 func NewFormattedRootHeaders() FormattedRootHeaders {
 	return FormattedRootHeaders{
 		Headers:     map[string][]string{},
+		BadHeaders:  map[string][]string{},
 		Subject:     "",
 		References:  []string{},
 		From:        []Address{},
@@ -66,6 +68,8 @@ func GetRootHeaderCallback(sm *FormattedRootHeaders) func(node *Node) error {
 		parsedHeaders := node.ParsedHeader
 
 		sm.ContentType = node.ContentType
+		// Don't process bad headers, let lib consumer deal with it
+		sm.BadHeaders = node.BadHeaders
 
 		for k, v := range parsedHeaders {
 			switch k {
