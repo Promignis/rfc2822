@@ -126,6 +126,7 @@ func validHeaderKeyByte(b byte) bool {
 	return c >= 33 && c <= 126 && c != ':'
 }
 
+// TODO: Refer Enmime, add QP and b64 cleaners
 func encodingReader(enc string, r io.Reader) (io.Reader, error) {
 	var dec io.Reader
 	switch strings.ToLower(enc) {

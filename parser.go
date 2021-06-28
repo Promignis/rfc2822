@@ -150,7 +150,7 @@ func (mt *mimeTree) createNode(parent *Node) *Node {
 }
 
 type BodyCallback func(mimeNode *Node) error
-type RootHeaderCallback func(parsedHeader map[string][]string) error
+type RootHeaderCallback func(node *Node) error
 
 func readNextLine(r *bufio.Reader, l []byte) ([]byte, []byte, error) {
 
@@ -295,7 +295,7 @@ func (mt *mimeTree) parse(pc BodyCallback, hc RootHeaderCallback) error {
 
 				// Call root header callback
 				if mt.currentNode.tstate.parentNode.tstate.root && hc != nil {
-					err := hc(mt.currentNode.ParsedHeader)
+					err := hc(mt.currentNode)
 					if err != nil {
 						return fmt.Errorf("Error parsing header: %v", err)
 					}

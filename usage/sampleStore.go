@@ -2,8 +2,6 @@ package main
 
 import (
 	"io"
-
-	mime "github.com/Promignis/rfc2822"
 )
 
 type SampleStore struct{}
@@ -19,8 +17,4 @@ func (s *SampleStore) Put(key string, reader io.Reader) error {
 func (s *SampleStore) Get(key string) (io.ReadCloser, error) {
 
 	return nil, nil
-}
-
-func newSampleStore() mime.Store {
-	return &SampleStore{}
 }

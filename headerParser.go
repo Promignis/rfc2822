@@ -391,7 +391,10 @@ func MsgIDList(v string) ([]string, error) {
 		if err != nil {
 			return l, err
 		}
-		msgID = FromIDHeader(msgID)
+
+		// TODO: Check if this is needed
+		//msgID = FromIDHeader(msgID)
+
 		l = append(l, msgID)
 	}
 

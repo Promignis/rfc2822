@@ -2,8 +2,6 @@ package rfc2822
 
 import (
 	"fmt"
-	"io"
-	"io/ioutil"
 	"net/mail"
 	"time"
 )
@@ -24,78 +22,51 @@ type Address struct {
 	AddressText string // Encoded Address format
 }
 
-type BodyData struct {
-	ID          string
-	Attachment  bool
-	URL         string
-	storageType string
-	Name        string
-	Size        string
-	ContentType string
+type FormattedRootHeaders struct {
+	Headers     map[string][]string
+	Subject     string
+	References  []string
+	From        []Address
+	To          []Address
+	Cc          []Address
+	Bcc         []Address
+	Sender      []Address
+	ReplyTo     []Address
+	DeliveredTo []Address
+	ReturnPath  []Address
+	Priority    string
+	MessageID   string
+	InReplyTo   []string
+	Date        time.Time
+	ContentType ContentType
 }
 
-type StructuredMime struct {
-	Headers        map[string][]string
-	HasAttachments bool
-	Text           string
-	HTML           string
-	Attachments    []BodyData
-	Subject        string
-	References     []string
-	From           []Address
-	To             []Address
-	Cc             []Address
-	Bcc            []Address
-	Sender         []Address
-	ReplyTo        []Address
-	DeliveredTo    []Address
-	ReturnPath     []Address
-	Priority       string
-	MessageID      string
-	InReplyTo      []string
-	Date           time.Time
-	// Imap
-	MimeTree *Node
-}
-
-func NewStructuredMime() StructuredMime {
-	return StructuredMime{
-		Headers:        map[string][]string{},
-		HasAttachments: false,
-		Text:           "",
-		HTML:           "",
-		Attachments:    []BodyData{},
-		Subject:        "",
-		References:     []string{},
-		From:           []Address{},
-		To:             []Address{},
-		Cc:             []Address{},
-		Bcc:            []Address{},
-		Sender:         []Address{},
-		ReplyTo:        []Address{},
-		DeliveredTo:    []Address{},
-		ReturnPath:     []Address{},
-		Priority:       "",
-		MessageID:      "",
-		InReplyTo:      []string{},
-		Date:           time.Time{},
-		// Imap
-		MimeTree: nil,
+func NewFormattedRootHeaders() FormattedRootHeaders {
+	return FormattedRootHeaders{
+		Headers:     map[string][]string{},
+		Subject:     "",
+		References:  []string{},
+		From:        []Address{},
+		To:          []Address{},
+		Cc:          []Address{},
+		Bcc:         []Address{},
+		Sender:      []Address{},
+		ReplyTo:     []Address{},
+		DeliveredTo: []Address{},
+		ReturnPath:  []Address{},
+		Priority:    "",
+		MessageID:   "",
+		InReplyTo:   []string{},
+		Date:        time.Time{},
 	}
 }
 
-type StorageConfig struct {
-	BodyMaxSize int64 // In Bytes
-}
+func GetRootHeaderCallback(sm *FormattedRootHeaders) func(node *Node) error {
+	return func(node *Node) error {
+		parsedHeaders := node.ParsedHeader
 
-type Store interface {
-	GetType() string
-	Put(key string, reader io.Reader) error
-	Get(key string) (io.ReadCloser, error)
-}
+		sm.ContentType = node.ContentType
 
-func GetRootHeaderCallback(sm *StructuredMime) func(parsedHeaders map[string][]string) error {
-	return func(parsedHeaders map[string][]string) error {
 		for k, v := range parsedHeaders {
 			switch k {
 			case "subject":
@@ -224,54 +195,6 @@ func GetRootHeaderCallback(sm *StructuredMime) func(parsedHeaders map[string][]s
 				return fmt.Errorf("Sender header is neeed when there are multiple From values")
 			}
 		}
-
-		return nil
-	}
-}
-
-func GetStorageCallback(sm *StructuredMime, store Store) func(n *Node) error {
-
-	return func(n *Node) error {
-		// Is this node an attachment
-		isAttachment := true
-
-		if n.ContentType.Type == "text" {
-			if n.ContentType.SubType == "plain" || n.ContentType.SubType == "html" {
-				isAttachment = false
-			}
-		} else if n.ContentDisposition.MediaType != "inline" {
-			isAttachment = false
-		}
-
-		// Content Type can be of the following types
-		// message, multipart, text, application
-		// for now anything aside from
-		/*
-			text/
-				plain
-				html
-			multipart/
-				mixed
-				alternate
-				related
-		*/
-		// is not processed , they will be treated as attachments/blob
-
-		// If of type html/text
-		// keep putting in body till a limit, if limit crossed then create a new reader and put in store
-		// if text then keep a small subset?
-		// update the atts array
-		// if attachment
-		// put in store
-		// update the atts array
-
-		buf, err := ioutil.ReadAll(n)
-		if err != nil {
-			return err
-		}
-
-		fmt.Println("attachments: ", isAttachment)
-		fmt.Println(string(buf), "------------")
 
 		return nil
 	}
