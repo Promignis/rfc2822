@@ -35,6 +35,8 @@ const MAX_LINE_OCTETS = 4000
 const HEADER = "header"
 const BODY = "body"
 
+var ErrEmptyMime = fmt.Errorf("Empty Mime")
+
 var ValidContentDispositions = []string{"inline", "attachment"}
 
 // For images with large attachemts this could cause heap churn. Take a look
@@ -52,20 +54,22 @@ type tempState struct {
 type Node struct {
 	ChildNodes []*Node
 	// https://golang.org/pkg/net/textproto/#MIMEHeader
-	ParsedHeader        map[string][]string
-	BadHeaders          map[string][]string
-	Body                []string
-	Multipart           string
-	MultipartSeenBStart bool
-	MultipartSeenBEnd   bool
-	Preamble            string
-	Epilogue            string
-	ContentType         ContentType
-	ContentDisposition  ContentDisposition
-	Boundary            string
-	LineCount           int
-	Size                int
-	tstate              tempState
+	ParsedHeader           map[string][]string
+	BadHeaders             map[string][]string
+	Body                   []string
+	Multipart              string
+	MultipartSeenBStart    bool
+	MultipartSeenBEnd      bool
+	Preamble               string
+	Epilogue               string
+	ContentType            ContentType
+	ContentDisposition     ContentDisposition
+	Boundary               string
+	LineCount              int
+	Size                   int
+	Path                   []int
+	MultipartContainerType string
+	tstate                 tempState
 }
 
 func (n *Node) Read(d []byte) (int, error) {
@@ -138,18 +142,33 @@ func (mt *mimeTree) createNode(parent *Node) *Node {
 		parentBoundary: parent.Boundary,
 		parentNode:     parent}
 
+	path := []int{}
+	contType := ""
+
+	if parent.tstate.root {
+		path = append(path, 1)
+	} else {
+		path = append(parent.Path, len(parent.ChildNodes)+1)
+	}
+
+	if parent.ContentType.Type == "multipart" {
+		contType = parent.ContentType.SubType
+	}
+
 	newNode := Node{
-		ChildNodes:          []*Node{},
-		BadHeaders:          map[string][]string{},
-		Body:                []string{},
-		Multipart:           "",
-		MultipartSeenBStart: false,
-		MultipartSeenBEnd:   false,
-		ParsedHeader:        map[string][]string{},
-		Boundary:            "",
-		LineCount:           0,
-		Size:                0,
-		tstate:              newTempState,
+		ChildNodes:             []*Node{},
+		BadHeaders:             map[string][]string{},
+		Body:                   []string{},
+		Multipart:              "",
+		MultipartSeenBStart:    false,
+		MultipartSeenBEnd:      false,
+		ParsedHeader:           map[string][]string{},
+		Boundary:               "",
+		LineCount:              0,
+		Size:                   0,
+		Path:                   path,
+		MultipartContainerType: contType,
+		tstate:                 newTempState,
 	}
 
 	parent.ChildNodes = append(parent.ChildNodes, &newNode)
@@ -522,7 +541,6 @@ func (mt *mimeTree) finalize() {
 
 	walker = func(n *Node) {
 		// TODO: Handle content type 'message/rfc822'
-
 		for _, cn := range n.ChildNodes {
 			walker(cn)
 		}
@@ -538,7 +556,9 @@ func (mt *mimeTree) finalize() {
 		n.tstate.bodyReader = nil
 	}
 
-	walker(mt.MimetreeRoot)
+	if len(mt.MimetreeRoot.ChildNodes) != 0 {
+		walker(mt.MimetreeRoot.ChildNodes[0])
+	}
 
 	mt.currentNode = nil
 }
@@ -554,7 +574,13 @@ func ParseMime(r io.Reader, bc BodyCallback, hc RootHeaderCallback, storePreambl
 
 	mimeTree.finalize()
 
-	root := mimeTree.MimetreeRoot.ChildNodes[0]
+	var root *Node
+
+	if len(mimeTree.MimetreeRoot.ChildNodes) != 0 {
+		root = mimeTree.MimetreeRoot.ChildNodes[0]
+	} else {
+		return &Node{}, ErrEmptyMime
+	}
 
 	return root, nil
 }
