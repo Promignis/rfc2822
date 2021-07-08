@@ -135,7 +135,6 @@ Message-ID: <CALa9RR=0AnAvVYBN_XeuZ+z51M7Em-i_RoYC3Ur8WmEt4h+mig@mail.gmail.com>
 Subject: test eml
 To: =?US-ASCII?Q?Keith_Moore?= <efgh@promignis.com>, =?ISO-8859-1?Q?Keld_J=F8rn_Simonsen?= <abcd@promignis.com>
 To: =?ISO-8859-1?Q?Andr=E9?= <querty@promignis.com>, "=?big5?q?=a1=5d_=a1=61_=a1=71?=" <asdf@promignis.com>
-From: James Hillyerd <james@hillyerd.com>
 Subject: =?ISO-8859-1?B?SWYgeW91IGNhbiByZWFkIHRoaXMgeW8=?=
 		=?ISO-8859-2?B?dSB1bmRlcnN0YW5kIHRoZSBleGFtcGxlLg==?=
 Content-Type: text/plain; charset="UTF-8"

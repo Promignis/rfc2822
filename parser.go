@@ -85,6 +85,7 @@ type mimeTree struct {
 	MimetreeRoot *Node
 	nodeCount    int16
 	currentNode  *Node
+	rootHeader   map[string][]string
 }
 
 type ContentType struct {
@@ -127,6 +128,7 @@ func newMimeTree(raw io.Reader) *mimeTree {
 		MimetreeRoot: &rootNode,
 		nodeCount:    0,
 		currentNode:  nil,
+		rootHeader:   map[string][]string{},
 	}
 
 	mimeTree.currentNode = mimeTree.createNode(&rootNode)
@@ -176,7 +178,7 @@ func (mt *mimeTree) createNode(parent *Node) *Node {
 	return &newNode
 }
 
-type BodyCallback func(mimeNode *Node) error
+type BodyCallback func(mimeNode *Node, rootHeader *map[string][]string) error
 type RootHeaderCallback func(node *Node) error
 
 func readNextLine(r *bufio.Reader, l []byte) ([]byte, []byte, error) {
@@ -326,6 +328,7 @@ func (mt *mimeTree) parse(pc BodyCallback, hc RootHeaderCallback, storePreambleA
 					if err != nil {
 						return fmt.Errorf("Error parsing header: %v", err)
 					}
+					mt.rootHeader = mt.currentNode.ParsedHeader
 				}
 
 				mt.currentNode.tstate.state = BODY
@@ -394,7 +397,7 @@ func (mt *mimeTree) parse(pc BodyCallback, hc RootHeaderCallback, storePreambleA
 
 				mt.currentNode.tstate.bodyReader = fullReader
 
-				err := pc(mt.currentNode)
+				err := pc(mt.currentNode, &mt.rootHeader)
 
 				if err != nil {
 					return err

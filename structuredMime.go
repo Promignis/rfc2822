@@ -185,6 +185,13 @@ func GetRootHeaderCallback(sm *FormattedRootHeaders) func(node *Node) error {
 
 		//Validations:
 
+		// TODO:
+		// Must have messageId
+
+		if sm.MessageID == "" {
+			return fmt.Errorf("Message-ID header can not be empty")
+		}
+
 		// https://datatracker.ietf.org/doc/html/rfc5322#section-3.6.2
 		if len(sm.From) == 0 && len(sm.Sender) == 0 {
 			return fmt.Errorf("From and Sender headers both can not be 0")
