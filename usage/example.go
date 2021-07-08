@@ -20,16 +20,16 @@ func main() {
 	_, err := mime.ParseMime(reader, smCallback, hc, false)
 
 	fmt.Println("========= SM ============")
-	// fmt.Println(sm.Date)
-	// fmt.Println(sm.Subject)
-	// fmt.Println("sm.From", sm.From)
-	// fmt.Println("to", sm.To)
-	// fmt.Println("bcc", sm.Bcc)
-	// fmt.Println("cc", sm.Cc)
-	// fmt.Println("contentType", sm.ContentType)
-	// fmt.Println("ref", sm.References)
-	// fmt.Println(sm.InReplyTo)
-	// fmt.Println("msgid:", sm.MessageID)
+	fmt.Println(sm.Date)
+	fmt.Println(sm.Subject)
+	fmt.Println("sm.From", sm.From)
+	fmt.Println("to", sm.To)
+	fmt.Println("bcc", sm.Bcc)
+	fmt.Println("cc", sm.Cc)
+	fmt.Println("contentType", sm.ContentType)
+	fmt.Println("ref", sm.References)
+	fmt.Println(sm.InReplyTo)
+	fmt.Println("msgid:", sm.MessageID)
 
 	if err != nil {
 		log.Fatal("error while parsing", err)
@@ -43,12 +43,8 @@ func main() {
 	// fmt.Println(string(jsonVal))
 }
 
-func bodyCallback() func(n *mime.Node, rh *map[string][]string) error {
-	return func(n *mime.Node, rh *map[string][]string) error {
-
-		fmt.Println("-------------------body callback------------------------")
-		fmt.Println(*rh)
-		fmt.Println("--------------------------------------------------------")
+func bodyCallback() func(n *mime.Node) error {
+	return func(n *mime.Node) error {
 
 		// Is this node an attachment
 		// isAttachment := true
